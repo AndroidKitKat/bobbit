@@ -41,6 +41,23 @@ async def title(bot, message, url=None, override=False):
                 '{color}{green}Title{color}: {bold}{title}{bold}',
                 title = strip_html(html.unescape(html_title)).strip()
             )
+            
+            # Fediverse (Pleroma & Mastodon tested)
+            try:
+                meta_tags = re.findall(r'<meta content[^>]*>', text)
+                if len(meta_tags) 
+                tooter, status = [re.sub('Attached: \d+ images?', '', re.search('\"(.*?)\"', tag).group(1)) for tag in meta_tags if 'og:title"' in tag or 'og:description' in tag]
+                
+                response = bot.client.format_text(
+                    'From {color}{green}{tooter}{color} fediverse: {bold}{status}{bold}',
+                    tooter = tooter,
+                    status = strip_html(html.unescape(status)).strip()
+                )
+            except (IndexError, ValueError) as e:
+                # Since we have to look at /every/ URL we might as well not moan if something happens
+                pass
+
+            
         except (IndexError, ValueError) as e:
             logging.warn(e)
             return
