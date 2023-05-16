@@ -41,7 +41,8 @@ FLIRT_PHRASES = [
     'let\'s play Titanic. You\'ll be the iceberg, and I\'ll go down.',
     'you make me horny. That\'s it.',
     'I wouldn\'t mind checking you for ticks.',
-    'I\'m not a dentist, but I could give you a filling.'
+    'I\'m not a dentist, but I could give you a filling.',
+    'Are you a fossile sample? Because I\'m an impatient paleontologist and want to date you badly.'
 ]
 
 # Command
