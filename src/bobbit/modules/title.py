@@ -22,7 +22,10 @@ Example:
 
 CHANNEL_BLACKLIST = []
 DOMAIN_BLACKLIST  = ['reddit.com', 'twitter.com']
-AVOID_EXTENSIONS  = ('.gif', '.jpg', '.mkv', '.mov', '.mp4', '.png')
+AVOID_EXTENSIONS  = (
+    '.gif', '.jpg', '.mkv', '.mov', '.mp4', '.png', '.jpeg', '.heic',
+    '.gz' , '.xz' , '.bz2', '.tgz', '.deb',
+)
 
 # Generic Command
 
@@ -34,18 +37,49 @@ async def title(bot, message, url=None, override=False):
         return
 
     async with bot.http_client.get(url) as response:
+        # Skip non HTML content or content larger than 8MB
+        if response.content_type != 'text/html' or \
+           int(response.headers.get('Content-Length', 0)) > (1<<23):
+            return
+
         try:
-            text       = (await response.text()).replace('\r', '').replace('\n', ' ')
-            html_title = re.findall(r'<title[^>]*>([^<]+)</title>', text)[0]
-            response   = bot.client.format_text(
-                '{color}{green}Title{color}: {bold}{title}{bold}',
-                title = strip_html(html.unescape(html_title)).strip()
-            )
+            text = (await response.text()).replace('\r', '').replace('\n', ' ')
+            if not (
+                (response := await mastodon_title(bot, url, text)) or
+                (response := await photon_title(bot, url, text, message))
+            ):
+                html_title = re.findall(r'<title[^>]*>([^<]+)</title>', text)[0]
+                response   = bot.client.format_text(
+                    '{color}{green}Title{color}: {bold}{title}{bold}',
+                    title = strip_html(html.unescape(html_title)).strip()
+                )
         except (IndexError, ValueError) as e:
             logging.warn(e)
             return
 
         return message.with_body(response)
+
+async def photon_title(bot, url, text, message):
+    if not re.search(r'<meta\s+name="description"\s+content="Photon:.*lemmy.*client"', text):
+        return None
+
+    try:
+        host, post = re.findall('post/([^/]+)/([0-9]+)', url)[0]
+        return (await title(bot, message, f'https://{host}/post/{post}')).body
+    except IndexError:
+        return None
+
+async def mastodon_title(bot, url, text):
+    try:
+        user   = re.findall(r'<meta content="([^"]+)" property="profile:username"', text)[0]
+        status = re.findall(r'<meta content="([^"]+)" property="og:description"', text)[0]
+        return bot.client.format_text(
+            '{color}{green}{user}{color}: {bold}{status}{bold}',
+            user    = user,
+            status  = html.unescape(status).strip(),
+        )
+    except IndexError:
+        return None
 
 # Reddit Command
 
@@ -53,18 +87,29 @@ REDDIT_PATTERN = r'.*(?P<url>http[^\s]+reddit.com/[^\s]+).*'
 
 async def reddit_title(bot, message, url):
     async with bot.http_client.get(url) as response:
-        try:
-            text       = await response.text()
-            post_title = re.findall(r'<meta property="og:title" content="([^"]+)"/>', text)[0]
+        text = await response.text()
 
-            subreddit, post_title = post_title.rsplit(' - ', 1)
+        try:
+            post_title = re.findall(r'<meta property="og:title" content="([^"]+)"', text)[0]
+            subreddit, post_title = post_title.split(' - ', 1)
             return message.with_body(bot.client.format_text(
                 '{color}{green}{}{color}: {bold}{}{bold}',
-                subreddit, post_title
+                subreddit, html.unescape(post_title)
             ))
-        except IndexError as e:
-            logging.warn(e)
-            return await title(bot, message, url, True)
+        except IndexError:
+            pass
+
+        try:
+            post_title = re.findall(r'shreddit-title title="([^"]+)"', text)[0]
+            post_title, subreddit = post_title.rsplit(' : ', 1)
+            return message.with_body(bot.client.format_text(
+                '{color}{green}{}{color}: {bold}{}{bold}',
+                subreddit, html.unescape(post_title)
+            ))
+        except IndexError:
+            pass
+
+        return await title(bot, message, url, True)
 
 # Register
 
